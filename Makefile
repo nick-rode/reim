@@ -25,7 +25,7 @@ TESTBIN    = $(OUTDIR)/$(NAME)_test
 PKGS       = sndfile portaudio-2.0
 
 # Optional MKL / FFT support (uncomment to use)
-# FFTFLAG  = -DREIM_USE_FFTW3
+FFTFLAG  = -DREIM_USE_FFTW3
 # MKLPATH  = /opt/intel/compilers_and_libraries/linux/mkl/
 # MPIPATH  = /opt/intel/compilers_and_libraries/linux/mpi/intel64/
 # MKLINC   = -I$(MKLPATH)include -I$(MPIPATH)include
@@ -34,9 +34,9 @@ PKGS       = sndfile portaudio-2.0
 
 # Flags
 INCLUDE    = -Iinclude $(MKLINC)
-LIBS       = -lm $(shell $(PKGCONFIG) --libs $(PKGS)) $(MKLLIB)
-CFLAGS     = -MMD -MP -O3 -Wall -Wextra -std=c99 $(INCLUDE) $(shell $(PKGCONFIG) --cflags $(PKGS)) $(FFTFLAG)
-CXXFLAGS   = -MMD -MP -O3 -Wall -Wextra -std=c++11 $(INCLUDE) $(shell $(PKGCONFIG) --cflags $(PKGS)) $(FFTFLAG)
+LIBS       = -lm $(shell $(PKGCONFIG) --libs $(PKGS)) $(MKLLIB) -L/opt/homebrew/lib -lfftw3
+CFLAGS     = -MMD -MP -O3 -Wall -Wextra -std=c99 $(INCLUDE) $(shell $(PKGCONFIG) --cflags $(PKGS)) $(FFTFLAG) -I/opt/homebrew/include
+CXXFLAGS   = -MMD -MP -O3 -Wall -Wextra -std=c++11 $(INCLUDE) $(shell $(PKGCONFIG) --cflags $(PKGS)) $(FFTFLAG) -I/opt/homebrew/include
 LDFLAGS    = $(LIBS)
 
 # Sources and objects
