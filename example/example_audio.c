@@ -1,11 +1,15 @@
+#include "shared_state.h"
 #include "example_audio.h"
 
 #include "reim/memory.h"
+
 #include <portaudio.h>
 #include <sndfile.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+
 
 bool audio_process_file(const char* input_filename, const char* output_filename, size_t buffer_size,
     const audio_initializer_t initializer, const audio_terminator_t terminator,
@@ -136,9 +140,13 @@ void audio_process_realtime(size_t buffer_size, double fs,
         abort();
     }
 
-    puts("Press Enter key to stop");
+    puts("Streaming audio. Press 'x' to stop.");
     fflush(stdout);
-    getchar();
+
+    // ✅ Keep running until 'x' is pressed in another thread
+    while (keep_running) {
+        Pa_Sleep(100); // sleep 100ms
+    }
 
     err = Pa_StopStream(stream);
     if (err != paNoError) {

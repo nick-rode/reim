@@ -9,11 +9,20 @@
 #include "reim/memory.h"
 #include "reim/synthesis.h"
 #include "reim/vocoder.h"
+
+#include "shared_state.h"
+
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <termios.h>   // for struct termios, tcgetattr, tcsetattr
+#include <unistd.h>    // for STDIN_FILENO, usleep
+#include <fcntl.h>     // for fcntl, O_NONBLOCK
+#include <stdio.h>     // for getchar, printf
+#include <pthread.h>   // for pthread_create, etc
 
 typedef struct {
     audio_frame_t* frame;
@@ -27,6 +36,11 @@ typedef struct {
     double* ap;
     double* sp;
 } audio_data_t;
+
+volatile double fo_mod_ap = 1.0;
+volatile double fo_mod_sp = 1.0;
+volatile double fo_mod_syn = 1.0;
+volatile int keep_running = 1;
 
 void* audio_initializer(size_t buffer_size, double fs)
 {
@@ -83,16 +97,17 @@ void audio_callback(const double* input, double* output, size_t buffer_size, voi
             const bool issilence = analyze_silence(data->vocoder, waveform, REIM_SILENCE_THRESHOLD);
 
             // fo analysis
+            //const double fo = fo_mod_ap * analyze_fo(data->vocoder, data->fo_context, waveform, waveform_delayed);
             const double fo = analyze_fo(data->vocoder, data->fo_context, waveform, waveform_delayed);
 
             // ap analysis
-            const bool isvoiced = analyze_ap(data->vocoder, data->ap_context, waveform, fo, issilence, data->ap);
+            const bool isvoiced = analyze_ap(data->vocoder, data->ap_context, waveform, fo * fo_mod_ap, issilence, data->ap);
 
             // sp analysis
-            analyze_sp(data->vocoder, data->sp_context, waveform, fo, isvoiced, issilence, data->sp);
+            analyze_sp(data->vocoder, data->sp_context, waveform, fo * fo_mod_sp, isvoiced, issilence, data->sp);
 
             // synthesis: new frame
-            synthesize_new_frame(data->vocoder, data->synthesis, fo, isvoiced, issilence, data->ap, data->sp);
+            synthesize_new_frame(data->vocoder, data->synthesis, fo * fo_mod_syn, isvoiced, issilence, data->ap, data->sp);
         }
         output[i] = synthesize_next_sample(data->vocoder, data->synthesis);
         // assert(!isnan(output[i]));
@@ -100,13 +115,60 @@ void audio_callback(const double* input, double* output, size_t buffer_size, voi
     }
 }
 
+
+static void* input_thread_fn(void* arg)
+{
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);  // turn off buffering and echo
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+
+    while (keep_running) {
+        int ch = getchar();
+        if (ch == EOF) {
+            usleep(10000);  // sleep 10ms
+            continue;
+        }
+
+        switch (ch) {
+            case 'q': fo_mod_ap += 0.1; break;
+            case 'a': fo_mod_ap -= 0.1; break;
+            case 'w': fo_mod_sp += 0.1; break;
+            case 's': fo_mod_sp -= 0.1; break;
+            case 'e': fo_mod_syn += 0.1; break;
+            case 'd': fo_mod_syn -= 0.1; break;
+            case 'x': keep_running = 0; break;
+        }
+
+        printf("\r[fo_mod_ap: %.2f] [fo_mod_sp: %.2f] [fo_mod_syn: %.2f]        ",
+               fo_mod_ap, fo_mod_sp, fo_mod_syn);
+        fflush(stdout);
+    }
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // restore terminal
+    return NULL;
+}
+
+
 int main()
 {
     const size_t buffer_size = 4096;
     const double fs = 48000;
 
-    audio_process_file("vocal_denden_cut.wav", "output.wav", buffer_size, audio_initializer, audio_terminator, audio_callback);
+    //audio_process_file("ryan_mono.wav", "output.wav", buffer_size, audio_initializer, audio_terminator, audio_callback);
+    //audio_process_realtime(buffer_size, fs, audio_initializer, audio_terminator, audio_callback);
+
+    pthread_t input_thread;
+    pthread_create(&input_thread, NULL, input_thread_fn, NULL);
+
+    // You can use either realtime or file-based process
     audio_process_realtime(buffer_size, fs, audio_initializer, audio_terminator, audio_callback);
+
+    keep_running = 0;
+    pthread_join(input_thread, NULL);
+    printf("\nExited cleanly.\n");
 
     return 0;
 }
